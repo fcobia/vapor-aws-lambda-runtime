@@ -125,15 +125,23 @@ extension APIGateway.V2.Response {
                 isBase64Encoded: false
             )
 			logger.info("Got here String body")
-        } else if var buffer = response.body.buffer {
-            let bytes = buffer.readBytes(length: buffer.readableBytes)!
-            self = .init(
-                statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-                headers: headers,
-                body: String(base64Encoding: bytes),
-                isBase64Encoded: true
-            )
+		} else if var buffer = response.body.buffer {
+			let bytes = buffer.readBytes(length: buffer.readableBytes)!
+			self = .init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: String(base64Encoding: bytes),
+				isBase64Encoded: true
+			)
 			logger.info("Got here Buffer body: \(String(base64Encoding: bytes))")
+		} else if let bytes = response.body.data {
+			self = .init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: String(base64Encoding: bytes),
+				isBase64Encoded: true
+			)
+			logger.info("Got here Bytes body: \(String(base64Encoding: bytes))")
         } else {
             self = .init(
                 statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
