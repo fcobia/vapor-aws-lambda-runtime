@@ -103,6 +103,11 @@ extension APIGateway.V2.Request: Vapor.StorageKey {
 
 extension APIGateway.V2.Response {
     init(response: Vapor.Response) {
+		
+		// FIXME: Debugging
+		let logger = Logger(label: "codes.vapor.response")
+
+		
         var headers = [String: String]()
         response.headers.forEach { name, value in
             if let current = headers[name] {
@@ -119,6 +124,7 @@ extension APIGateway.V2.Response {
                 body: string,
                 isBase64Encoded: false
             )
+			logger.info("Got here String body")
         } else if var buffer = response.body.buffer {
             let bytes = buffer.readBytes(length: buffer.readableBytes)!
             self = .init(
@@ -127,12 +133,14 @@ extension APIGateway.V2.Response {
                 body: String(base64Encoding: bytes),
                 isBase64Encoded: true
             )
+			logger.info("Got here Buffer body: \(String(base64Encoding: bytes))")
         } else {
             self = .init(
                 statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
                 headers: headers
             )
-        }
+			logger.info("Got here String No body")
+       }
 		
 		// FIXME: Debugging
 		let jsonData = try? JSONEncoder().encode(self)
@@ -143,8 +151,6 @@ extension APIGateway.V2.Response {
 		else {
 			jsonString = "Error encoding response"
 		}
-		
-		let logger = Logger(label: "codes.vapor.response")
 		logger.info("Response: \(jsonString)")
     }
 }
