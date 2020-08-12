@@ -133,5 +133,18 @@ extension APIGateway.V2.Response {
                 headers: headers
             )
         }
+		
+		// FIXME: Debugging
+		let jsonData = try? JSONEncoder().encode(self)
+		let jsonString: String
+		if let jsonData = jsonData {
+			jsonString = String(bytes: jsonData, encoding: .utf8) ?? "Unable to convert data to string"
+		}
+		else {
+			jsonString = "Error encoding response"
+		}
+		
+		let logger = Logger(label: "codes.vapor.response")
+		logger.info("Response: \(jsonString)")
     }
 }
