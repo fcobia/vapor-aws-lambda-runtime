@@ -30,7 +30,7 @@ struct APIGatewayV2Handler: EventLoopLambdaHandler {
         }
 
         return responder.respond(to: vaporRequest)
-            .map { APIGateway.V2.Response(response: $0) }
+            .map { APIGateway.V2.Response(context: context, response: $0) }
     }
 }
 
