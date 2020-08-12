@@ -102,7 +102,7 @@ extension APIGateway.V2.Request: Vapor.StorageKey {
 // MARK: - Response -
 
 extension APIGateway.V2.Response {
-    init(response: Vapor.Response) {
+    init(context: Lambda.Context, response: Vapor.Response) {
 		
 		// FIXME: Debugging
 		let logger = Logger(label: "codes.vapor.response")
@@ -142,7 +142,16 @@ extension APIGateway.V2.Response {
 				isBase64Encoded: true
 			)
 			logger.info("Got here Bytes body: \(String(base64Encoding: bytes))")
-        } else {
+		} else if var buffer = try? response.body.collect(on: context.eventLoop).wait() {
+			let bytes = buffer.readBytes(length: buffer.readableBytes)!
+			self = .init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: String(base64Encoding: bytes),
+				isBase64Encoded: true
+			)
+			logger.info("Got here stream body: \(String(base64Encoding: bytes))")
+		} else {
             self = .init(
                 statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
                 headers: headers
