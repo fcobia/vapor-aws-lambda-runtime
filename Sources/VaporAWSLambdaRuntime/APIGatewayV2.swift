@@ -29,8 +29,10 @@ struct APIGatewayV2Handler: EventLoopLambdaHandler {
             return context.eventLoop.makeFailedFuture(error)
         }
 
-        return responder.respond(to: vaporRequest)
-            .map { APIGateway.V2.Response(context: context, response: $0) }
+//		return responder.respond(to: vaporRequest)
+//			.map { APIGateway.V2.Response(context: context, response: $0) }
+		
+		return responder.respond(to: vaporRequest).flatMap { APIGateway.V2.Response.from(response: $0, in: context) }
     }
 }
 
@@ -102,6 +104,100 @@ extension APIGateway.V2.Request: Vapor.StorageKey {
 // MARK: - Response -
 
 extension APIGateway.V2.Response {
+	
+	static func from(response: Vapor.Response, in context: Lambda.Context) -> EventLoopFuture<APIGateway.V2.Response> {
+		
+		// FIXME: Debugging
+		let logger = Logger(label: "codes.vapor.response")
+		logger.info("Got here starting")
+
+		// Create the promise
+		let promise = context.eventLoop.makePromise(of: APIGateway.V2.Response.self)
+		
+		// Create the headers
+		var headers = [String: String]()
+		response.headers.forEach { name, value in
+			if let current = headers[name] {
+				headers[name] = "\(current),\(value)"
+			} else {
+				headers[name] = value
+			}
+		}
+		
+		// Can we access the body right away?
+		if let string = response.body.string {
+			promise.succeed(.init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: string,
+				isBase64Encoded: false
+			)) 
+			logger.info("Got here String body")
+		} else if var buffer = response.body.buffer {
+			let bytes = buffer.readBytes(length: buffer.readableBytes)!
+			
+			promise.succeed(.init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: String(base64Encoding: bytes),
+				isBase64Encoded: true
+			))
+			logger.info("Got here Buffer body: \(String(base64Encoding: bytes))")
+		} else if let bytes = response.body.data {
+			promise.succeed(.init(
+				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+				headers: headers,
+				body: String(base64Encoding: bytes),
+				isBase64Encoded: true
+			))
+			logger.info("Got here Bytes body: \(String(base64Encoding: bytes))")
+		} else {
+			logger.info("Got here calling collect")
+		
+			// See if it is a stream and try to gather the data
+			response.body.collect(on: context.eventLoop).whenComplete { collectResult in
+				logger.info("Got here Collected Result")
+				
+				switch collectResult {
+					
+					case .failure(let error):
+						logger.info("Got here collect failed: \(error)")
+						promise.fail(error)
+						
+					case .success(let buffer):
+						logger.info("Got here collect success")
+					
+						// Was there any content
+						guard 
+							var buffer = buffer,
+							let bytes = buffer.readBytes(length: buffer.readableBytes)
+						else {
+							logger.info("Got here collect no bytes")
+							promise.succeed(.init(
+								statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+								headers: headers
+							))
+							
+							return
+						}
+						logger.info("Got here collect finished: \(bytes.count)")
+						
+						// Done
+						promise.succeed(.init(
+							statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+							headers: headers,
+							body: String(base64Encoding: bytes),
+							isBase64Encoded: true
+						))
+				}
+			}
+		}
+
+		// Return the promise
+		return promise.futureResult
+	}
+	
+	
     init(context: Lambda.Context, response: Vapor.Response) {
 		
 		// FIXME: Debugging
