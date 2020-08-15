@@ -60,17 +60,7 @@ extension Vapor.Request {
         }
 
         if let cookies = req.cookies, cookies.count > 0 {
-            var cookiesStr = ""
-            cookies.enumerated().forEach { entry in
-
-                if entry.offset > 0 {
-                    cookiesStr += "; "
-                }
-
-                cookiesStr += entry.element
-            }
-
-            nioHeaders.add(name: "Cookie", value: cookiesStr)
+			nioHeaders.add(name: "Cookie", value: cookies.joined(separator: "; "))
         }
 
         var url: String = req.rawPath
@@ -125,15 +115,6 @@ extension APIGateway.V2.Response {
 				body: string,
 				isBase64Encoded: false
 			)) 
-//		} else if var buffer = response.body.buffer {
-//			let bytes = buffer.readBytes(length: buffer.readableBytes)!
-//			
-//			promise.succeed(.init(
-//				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-//				headers: headers,
-//				body: String(base64Encoding: bytes),
-//				isBase64Encoded: true
-//			))
 		} else if let bytes = response.body.data {
 			promise.succeed(.init(
 				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
