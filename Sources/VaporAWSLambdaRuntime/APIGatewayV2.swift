@@ -28,8 +28,8 @@ struct APIGatewayV2Handler: EventLoopLambdaHandler {
         } catch {
             return context.eventLoop.makeFailedFuture(error)
         }
-		
-		return responder.respond(to: vaporRequest).flatMap { APIGateway.V2.Response.from(response: $0, in: context) }
+
+        return responder.respond(to: vaporRequest).flatMap { APIGateway.V2.Response.from(response: $0, in: context) }
     }
 }
 
@@ -60,7 +60,7 @@ extension Vapor.Request {
         }
 
         if let cookies = req.cookies, cookies.count > 0 {
-			nioHeaders.add(name: "Cookie", value: cookies.joined(separator: "; "))
+            nioHeaders.add(name: "Cookie", value: cookies.joined(separator: "; "))
         }
 
         var url: String = req.rawPath
@@ -91,74 +91,70 @@ extension APIGateway.V2.Request: Vapor.StorageKey {
 // MARK: - Response -
 
 extension APIGateway.V2.Response {
-	
-	static func from(response: Vapor.Response, in context: Lambda.Context) -> EventLoopFuture<APIGateway.V2.Response> {
+    static func from(response: Vapor.Response, in context: Lambda.Context) -> EventLoopFuture<APIGateway.V2.Response> {
+        // Create the promise
+        let promise = context.eventLoop.makePromise(of: APIGateway.V2.Response.self)
 
-		// Create the promise
-		let promise = context.eventLoop.makePromise(of: APIGateway.V2.Response.self)
-		
-		// Create the headers
-		var headers = [String: String]()
-		response.headers.forEach { name, value in
-			if let current = headers[name] {
-				headers[name] = "\(current),\(value)"
-			} else {
-				headers[name] = value
-			}
-		}
-		
-		// Can we access the body right away?
-		if let string = response.body.string {
-			promise.succeed(.init(
-				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-				headers: headers,
-				body: string,
-				isBase64Encoded: false
-			)) 
-		} else if let bytes = response.body.data {
-			promise.succeed(.init(
-				statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-				headers: headers,
-				body: String(base64Encoding: bytes),
-				isBase64Encoded: true
-			))
-		} else {
-		
-			// See if it is a stream and try to gather the data
-			response.body.collect(on: context.eventLoop).whenComplete { collectResult in
-				
-				switch collectResult {
-					
-					case .failure(let error):
-						promise.fail(error)
-						
-					case .success(let buffer):
-					
-						// Was there any content
-						guard 
-							var buffer = buffer,
-							let bytes = buffer.readBytes(length: buffer.readableBytes)
-						else {
-							promise.succeed(.init(
-								statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-								headers: headers
-							))
-							
-							return
-						}
-						
-						// Done
-						promise.succeed(.init(
-							statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-							headers: headers,
-							body: String(base64Encoding: bytes),
-							isBase64Encoded: true
-						))
-				}
-			}
-		}
+        // Create the headers
+        var headers = [String: String]()
+        response.headers.forEach { name, value in
+            if let current = headers[name] {
+                headers[name] = "\(current),\(value)"
+            } else {
+                headers[name] = value
+            }
+        }
 
-		// Return the promise
-		return promise.futureResult
-	}
+        // Can we access the body right away?
+        if let string = response.body.string {
+            promise.succeed(.init(
+                statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+                headers: headers,
+                body: string,
+                isBase64Encoded: false
+            ))
+        } else if let bytes = response.body.data {
+            promise.succeed(.init(
+                statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+                headers: headers,
+                body: String(base64Encoding: bytes),
+                isBase64Encoded: true
+            ))
+        } else {
+            // See if it is a stream and try to gather the data
+            response.body.collect(on: context.eventLoop).whenComplete { collectResult in
+
+                switch collectResult {
+                case let .failure(error):
+                    promise.fail(error)
+
+                case let .success(buffer):
+
+                    // Was there any content
+                    guard
+                        var buffer = buffer,
+                        let bytes = buffer.readBytes(length: buffer.readableBytes)
+                    else {
+                        promise.succeed(.init(
+                            statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+                            headers: headers
+                        ))
+
+                        return
+                    }
+
+                    // Done
+                    promise.succeed(.init(
+                        statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+                        headers: headers,
+                        body: String(base64Encoding: bytes),
+                        isBase64Encoded: true
+                    ))
+                }
+            }
+        }
+
+        // Return the promise
+        return promise.futureResult
+    }
 }
