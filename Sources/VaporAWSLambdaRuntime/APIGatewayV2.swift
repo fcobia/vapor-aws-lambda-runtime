@@ -92,8 +92,6 @@ extension APIGateway.V2.Request: Vapor.StorageKey {
 
 extension APIGateway.V2.Response {
     static func from(response: Vapor.Response, in context: Lambda.Context) -> EventLoopFuture<APIGateway.V2.Response> {
-        // Create the promise
-        let promise = context.eventLoop.makePromise(of: APIGateway.V2.Response.self)
 
         // Create the headers
         var headers = [String: String]()
@@ -107,14 +105,14 @@ extension APIGateway.V2.Response {
 
         // Can we access the body right away?
         if let string = response.body.string {
-            promise.succeed(.init(
+            return context.eventLoop.makeSucceededFuture(.init(
                 statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
                 headers: headers,
                 body: string,
                 isBase64Encoded: false
             ))
         } else if let bytes = response.body.data {
-            promise.succeed(.init(
+            return context.eventLoop.makeSucceededFuture(.init(
                 statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
                 headers: headers,
                 body: String(base64Encoding: bytes),
@@ -122,39 +120,26 @@ extension APIGateway.V2.Response {
             ))
         } else {
             // See if it is a stream and try to gather the data
-            response.body.collect(on: context.eventLoop).whenComplete { collectResult in
-
-                switch collectResult {
-                case let .failure(error):
-                    promise.fail(error)
-
-                case let .success(buffer):
-
-                    // Was there any content
-                    guard
-                        var buffer = buffer,
-                        let bytes = buffer.readBytes(length: buffer.readableBytes)
-                    else {
-                        promise.succeed(.init(
-                            statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-                            headers: headers
-                        ))
-
-                        return
-                    }
-
-                    // Done
-                    promise.succeed(.init(
+            return response.body.collect(on: context.eventLoop).map { (buffer) -> APIGateway.V2.Response in
+                // Was there any content
+                guard
+                    var buffer = buffer,
+                    let bytes = buffer.readBytes(length: buffer.readableBytes)
+                else {
+                    return APIGateway.V2.Response(
                         statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
-                        headers: headers,
-                        body: String(base64Encoding: bytes),
-                        isBase64Encoded: true
-                    ))
+                        headers: headers
+                    )
                 }
+
+                // Done
+                return APIGateway.V2.Response(
+                    statusCode: AWSLambdaEvents.HTTPResponseStatus(code: response.status.code),
+                    headers: headers,
+                    body: String(base64Encoding: bytes),
+                    isBase64Encoded: true
+                )
             }
         }
-
-        // Return the promise
-        return promise.futureResult
     }
 }
